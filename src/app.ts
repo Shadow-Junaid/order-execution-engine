@@ -33,7 +33,7 @@ redisSubscriber.on('message', (channel, message) => {
   }
 });
 
-app.register(cors, { origin: true });
+app.register(cors, { origin: '*' });
 app.register(websocket);
 app.register(orderRoutes, { prefix: '/orders' });
 
