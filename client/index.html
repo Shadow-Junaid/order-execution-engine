@@ -46,7 +46,7 @@
                         side: "BUY",
                         inputToken: "USDC",
                         outputToken: "SOL",
-                        amount: 100
+                        amount: 666
                     })
                 });
 
@@ -73,13 +73,14 @@
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                // Format the log entry nicely
                 const statusHtml = `<span class="status">[${data.status.toUpperCase()}]</span>`;
                 addLog(`${statusHtml} ${data.log || JSON.stringify(data)}`);
 
-                if (data.status === 'confirmed') {
-                    addLog("🎉 Trade Complete!");
-                    ws.close();
+                // FIX: Close connection on 'failed' too, not just 'confirmed'
+                if (data.status === 'confirmed' || data.status === 'failed') {
+                    if (data.status === 'confirmed') addLog("🎉 Trade Complete!");
+                    if (data.status === 'failed') addLog("❌ Trade Failed.");
+                    ws.close(); 
                 }
             };
 

@@ -1,65 +1,70 @@
 import { Queue, Worker, Job } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
-import { MockDexRouter } from './dex/MockDexRouter'; // Ensure this path matches your folder
+import { MockDexRouter } from './dex/MockDexRouter'; 
 import Redis from 'ioredis';
 
-// 1. Setup Redis Connection for BullMQ
+// 1. Redis Connections
 const connection = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
   port: Number(process.env.REDIS_PORT) || 6379,
   maxRetriesPerRequest: null,
 });
 
-// 2. Setup Redis Connection for Publishing Updates (WebSocket)
 const redisPublisher = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
   port: Number(process.env.REDIS_PORT) || 6379,
 });
 
-export const orderQueue = new Queue('order-execution', { connection });
+export const orderQueue = new Queue('order-execution', { 
+  connection,
+  defaultJobOptions: {
+    attempts: 3, // Global retry setting: Try 3 times total
+    backoff: {
+      type: 'exponential',
+      delay: 1000 // Wait 1s, then 2s, then 4s
+    }
+  }
+});
 
 const prisma = new PrismaClient();
 const router = new MockDexRouter();
 
-// 3. Define the Worker (The "Brain" that processes orders)
+// 2. The Worker
 export const orderWorker = new Worker(
   'order-execution',
   async (job: Job) => {
     const { orderId, inputAmount } = job.data;
-    console.log(`[Worker] Processing Order: ${orderId}`);
+    // Log the attempt number (1, 2, or 3)
+    console.log(`[Worker] Processing Order: ${orderId} (Attempt ${job.attemptsMade + 1}/3)`);
 
     try {
-      // Step A: Update Status -> Routing
-      await updateStatus(orderId, 'routing', 'Fetching quotes from DEXs...');
+      // Step A: Update Status (Only on first attempt to avoid spamming UI)
+      if (job.attemptsMade === 0) {
+        await updateStatus(orderId, 'routing', 'Fetching quotes from DEXs...');
+      }
       
-      // Step B: Get Best Quote (Simulated)
+      // Step B: Get Best Quote
       const quote = await router.findBestRoute(inputAmount);
-      await updateStatus(orderId, 'routing', `Selected ${quote.dex} at $${quote.price.toFixed(2)}`);
+      
+      // Step C: Execution
+      if (job.attemptsMade === 0) {
+        await updateStatus(orderId, 'routing', `Selected ${quote.dex} at $${quote.price.toFixed(2)}`);
+        await updateStatus(orderId, 'submitted', 'Transaction sent to network...');
+      }
 
-      // Step C: Update Status -> Building Transaction
-      await updateStatus(orderId, 'building', 'Constructing transaction...');
-      await new Promise(r => setTimeout(r, 500)); // Fake building time
-
-      // Step D: Update Status -> Submitted
-      await updateStatus(orderId, 'submitted', 'Transaction sent to network...');
-
-      // Step E: Execute Trade (Simulated)
       const result = await router.executeTrade(quote);
 
-      // Step F: Final Success Update
+      // Step D: Success (Only runs if no error)
       await prisma.order.update({
         where: { id: orderId },
         data: {
           status: 'confirmed',
           txHash: result.txHash,
           price: result.finalPrice,
-          logs: {
-            push: `Swap Success! Hash: ${result.txHash}`
-          }
+          logs: { push: `Swap Success! Hash: ${result.txHash}` }
         }
       });
       
-      // Notify Frontend of success
       await redisPublisher.publish(`updates:${orderId}`, JSON.stringify({ 
         status: 'confirmed', 
         txHash: result.txHash,
@@ -71,43 +76,33 @@ export const orderWorker = new Worker(
       return result;
 
     } catch (error: any) {
-      console.error(`[Worker] Failed order ${orderId}:`, error);
-      
-      // Database Update
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'failed',
-          logs: { push: `Error: ${error.message}` }
-        }
-      });
+      console.error(`[Worker] Error order ${orderId}: ${error.message}`);
 
-      // Notify Frontend of failure
-      await redisPublisher.publish(`updates:${orderId}`, JSON.stringify({ 
-        status: 'failed', 
-        log: `Error: ${error.message}` 
-      }));
-
-      throw error; 
+      // CHECK: Is this the LAST attempt?
+      // job.attemptsMade starts at 0. So 0, 1, 2. (Total 3).
+      // If attemptsMade is 2, it means we just failed the 3rd time.
+      if (job.attemptsMade >= 2) {
+        // FINAL FAILURE - Update DB
+        console.log(`[Worker] Final failure for ${orderId}. Marking as FAILED.`);
+        await updateStatus(orderId, 'failed', `Permanent Failure: ${error.message}`);
+      } else {
+        // TEMPORARY FAILURE - Notify user but don't mark failed yet
+        await updateStatus(orderId, 'routing', `Network error (Attempt ${job.attemptsMade + 1}). Retrying...`);
+        // We throw the error so BullMQ knows to try again later
+        throw error;
+      }
     }
   },
   {
     connection,
-    concurrency: 10, // Requirement: 10 concurrent orders
-    limiter: {
-      max: 100,      // Requirement: 100 orders...
-      duration: 60000 // ...per 1 minute
-    }
+    concurrency: 10, 
+    limiter: { max: 100, duration: 60000 }
   }
 );
 
-/**
- * Helper function to:
- * 1. Update Database
- * 2. Publish event to Redis (so WebSocket can pick it up)
- */
+// Helper
 async function updateStatus(orderId: string, status: string, logMessage: string) {
-  // 1. DB Update
+  // Update DB
   await prisma.order.update({
     where: { id: orderId },
     data: {
@@ -116,7 +111,7 @@ async function updateStatus(orderId: string, status: string, logMessage: string)
     }
   });
 
-  // 2. Redis Publish
+  // Update WebSocket
   await redisPublisher.publish(`updates:${orderId}`, JSON.stringify({ 
     status, 
     log: logMessage,

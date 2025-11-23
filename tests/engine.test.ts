@@ -1,30 +1,37 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { MockDexRouter } from '../src/lib/dex/MockDexRouter';
 
-// We will test the Router logic in isolation (Unit Tests)
-describe('1. DEX Router Logic', () => {
+// NOTE: Ensure your server is running (npm run dev) before running these tests!
+const API_URL = 'http://127.0.0.1:3000';
+
+describe('1. DEX Router Logic (Unit Tests)', () => {
   const router = new MockDexRouter();
 
-  it('should return a quote from Raydium', async () => {
+  // Test 1: Raydium Quote
+  it('should return a valid quote from Raydium', async () => {
     const quote = await router.getRaydiumQuote(100);
     expect(quote.dex).toBe('RAYDIUM');
     expect(quote.price).toBeGreaterThan(0);
+    expect(quote.fee).toBe(0.003);
   });
 
-  it('should return a quote from Meteora', async () => {
+  // Test 2: Meteora Quote
+  it('should return a valid quote from Meteora', async () => {
     const quote = await router.getMeteoraQuote(100);
     expect(quote.dex).toBe('METEORA');
     expect(quote.price).toBeGreaterThan(0);
+    expect(quote.fee).toBe(0.002);
   });
 
-  it('should always select the better price (Best Execution)', async () => {
-    // Mock the individual calls to control the outcome
+  // Test 3: Best Price Selection (Routing Logic)
+  it('should always select the DEX with better output', async () => {
+    // We spy on the methods to force specific prices
     vi.spyOn(router, 'getRaydiumQuote').mockResolvedValue({
-      dex: 'RAYDIUM', price: 150, fee: 0, estimatedOutput: 149
+      dex: 'RAYDIUM', price: 100, fee: 0, estimatedOutput: 100
     });
     vi.spyOn(router, 'getMeteoraQuote').mockResolvedValue({
-      dex: 'METEORA', price: 155, fee: 0, estimatedOutput: 154 // Better
+      dex: 'METEORA', price: 110, fee: 0, estimatedOutput: 110 // Higher is better
     });
 
     const bestRoute = await router.findBestRoute(1);
@@ -32,51 +39,100 @@ describe('1. DEX Router Logic', () => {
   });
 });
 
-// Integration Tests (Requires your server to be running or mocked)
-// Note: For this simple setup, we assume the server logic is sound. 
-// In a real submission, you'd import 'app' and use supertest on it.
-describe('2. API Input Validation', () => {
-    const API_URL = 'http://localhost:3000'; // Ensure your server is running!
-
-    it('should accept a valid market order', async () => {
-        const res = await request(API_URL).post('/orders/execute').send({
-            type: "MARKET", side: "BUY", inputToken: "USDC", outputToken: "SOL", amount: 100
-        });
-        expect(res.status).toBe(200);
-        expect(res.body).toHaveProperty('orderId');
+describe('2. API Validation (Integration Tests)', () => {
+  
+  // Test 4: Valid Order
+  it('should accept a valid market order', async () => {
+    const res = await request(API_URL).post('/orders/execute').send({
+      type: "MARKET",
+      side: "BUY",
+      inputToken: "USDC",
+      outputToken: "SOL",
+      amount: 100
     });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('orderId');
+    expect(res.body.success).toBe(true);
+  });
 
-    it('should reject negative amounts', async () => {
-        const res = await request(API_URL).post('/orders/execute').send({
-            type: "MARKET", side: "BUY", inputToken: "USDC", outputToken: "SOL", amount: -50
-        });
-        expect(res.status).toBe(400); // Validation fail
+  // Test 5: Negative Amount
+  it('should reject orders with negative amounts', async () => {
+    const res = await request(API_URL).post('/orders/execute').send({
+      type: "MARKET",
+      side: "BUY",
+      inputToken: "USDC",
+      outputToken: "SOL",
+      amount: -50
     });
+    expect(res.status).toBe(400); // Validation error
+  });
 
-    it('should reject invalid order types', async () => {
-        const res = await request(API_URL).post('/orders/execute').send({
-            type: "INVALID_TYPE", side: "BUY", inputToken: "USDC", outputToken: "SOL", amount: 100
-        });
-        expect(res.status).toBe(400);
+  // Test 6: Invalid Order Type
+  it('should reject invalid order types', async () => {
+    const res = await request(API_URL).post('/orders/execute').send({
+      type: "LIMIT", // Our logic handles MARKET, but schema allows LIMIT.
+                     // If you want to strictly fail LIMIT in logic, you'd need to update controller.
+                     // For now, let's test a completely garbage type:
+      side: "BUY", 
+      inputToken: "USDC", 
+      outputToken: "SOL", 
+      amount: 100
+    }).send({ type: "GARBAGE_TYPE" }); 
+    
+    // Actually, Zod will catch this before it hits logic
+    const resGarbage = await request(API_URL).post('/orders/execute').send({
+        type: "NON_EXISTENT", side: "BUY", inputToken: "A", outputToken: "B", amount: 10
     });
+    expect(resGarbage.status).toBe(400);
+  });
+
+  // Test 7: Missing Fields
+  it('should reject requests missing required fields', async () => {
+    const res = await request(API_URL).post('/orders/execute').send({
+      side: "BUY",
+      amount: 100
+      // Missing type and tokens
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
-describe('3. System Architecture Limits', () => {
-    it('should implement retry logic (Documentation check)', () => {
-        // This is a static check of your code configuration
-        // In a real test, you would inspect the BullMQ worker config
-        expect(true).toBe(true); 
+describe('3. Queue & Concurrency (System Tests)', () => {
+  
+  // Test 8: High Concurrency (Queue Behaviour)
+  it('should handle multiple concurrent orders without crashing', async () => {
+    const requests = Array(5).fill(0).map(() => 
+      request(API_URL).post('/orders/execute').send({
+        type: "MARKET", side: "BUY", inputToken: "USDC", outputToken: "SOL", amount: 10
+      })
+    );
+    
+    const responses = await Promise.all(requests);
+    const successes = responses.filter(r => r.status === 200);
+    
+    // We expect all 5 to be queued successfully
+    expect(successes.length).toBe(5);
+  });
+
+  // Test 9: Data Persistence
+  it('should return unique Order IDs for every request', async () => {
+    const res1 = await request(API_URL).post('/orders/execute').send({
+      type: "MARKET", side: "BUY", inputToken: "USDC", outputToken: "SOL", amount: 10
+    });
+    const res2 = await request(API_URL).post('/orders/execute').send({
+      type: "MARKET", side: "BUY", inputToken: "USDC", outputToken: "SOL", amount: 10
     });
 
-    it('should handle concurrency', async () => {
-        // Fire 5 requests at once
-        const reqs = Array(5).fill(0).map(() => 
-            request('http://localhost:3000').post('/orders/execute').send({
-                type: "MARKET", side: "BUY", inputToken: "USDC", outputToken: "SOL", amount: 10
-            })
-        );
-        const responses = await Promise.all(reqs);
-        const successes = responses.filter(r => r.status === 200);
-        expect(successes.length).toBe(5);
-    });
+    expect(res1.body.orderId).not.toBe(res2.body.orderId);
+  });
+
+  // Test 10: WebSocket Connection Endpoint
+  it('should return 404/Error if connecting to WS without Order ID', async () => {
+      // Trying to hit the HTTP endpoint that upgrades to WS
+      // Fastify usually handles this, but let's ensure the route exists
+      const res = await request(API_URL).get('/orders/ws');
+      // Should close or fail because we didn't provide ?id=
+      // In HTTP terms, the upgrade failing usually looks like 404 or connection closed
+      expect(res.status).not.toBe(200); 
+  });
 });

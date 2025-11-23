@@ -1,0 +1,70 @@
+{
+	"info": {
+		"_postman_id": "b9f8f4a1-1234-4567-8901-abcdef123456",
+		"name": "Eterna Order Engine",
+		"description": "Collection for Order Execution Engine backend task.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Execute Market Order",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"type\": \"MARKET\",\n    \"side\": \"BUY\",\n    \"inputToken\": \"USDC\",\n    \"outputToken\": \"SOL\",\n    \"amount\": 100\n}"
+				},
+				"url": {
+					"raw": "http://localhost:3000/orders/execute",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "3000",
+					"path": [
+						"orders",
+						"execute"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Validation Error (Negative Amount)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"type\": \"MARKET\",\n    \"side\": \"BUY\",\n    \"inputToken\": \"USDC\",\n    \"outputToken\": \"SOL\",\n    \"amount\": -50\n}"
+				},
+				"url": {
+					"raw": "http://localhost:3000/orders/execute",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "3000",
+					"path": [
+						"orders",
+						"execute"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

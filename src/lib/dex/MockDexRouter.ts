@@ -1,6 +1,5 @@
 // src/lib/dex/MockDexRouter.ts
 
-// A simple delay function to simulate network latency
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface Quote {
@@ -18,7 +17,8 @@ export class MockDexRouter {
    * Simulates fetching a quote from Raydium (Higher variance)
    */
   async getRaydiumQuote(inputAmount: number): Promise<Quote> {
-    await sleep(200); // Simulate 200ms network delay
+    await sleep(200); // Simulate network delay
+    
     // Raydium price is Base Price +/- 2%
     const variance = 0.98 + Math.random() * 0.04; 
     const price = this.BASE_PRICE * variance;
@@ -35,7 +35,7 @@ export class MockDexRouter {
    * Simulates fetching a quote from Meteora (Lower variance)
    */
   async getMeteoraQuote(inputAmount: number): Promise<Quote> {
-    await sleep(200); // Simulate 200ms network delay
+    await sleep(200); 
     // Meteora price is Base Price +/- 1%
     const variance = 0.99 + Math.random() * 0.02;
     const price = this.BASE_PRICE * variance;
@@ -53,16 +53,13 @@ export class MockDexRouter {
    * Queries both, compares, and returns the best one.
    */
   async findBestRoute(inputAmount: number): Promise<Quote> {
-    // Run both queries in parallel (like a real aggregator)
     const [raydium, meteora] = await Promise.all([
       this.getRaydiumQuote(inputAmount),
       this.getMeteoraQuote(inputAmount)
     ]);
 
-    // Log the decision (Crucial for the "Transparency" requirement)
     console.log(`[Router] Raydium: $${raydium.price.toFixed(2)} | Meteora: $${meteora.price.toFixed(2)}`);
 
-    // Return the one with higher estimated output
     return raydium.estimatedOutput > meteora.estimatedOutput ? raydium : meteora;
   }
 
@@ -72,15 +69,15 @@ export class MockDexRouter {
   async executeTrade(quote: Quote): Promise<{ txHash: string; finalPrice: number }> {
     console.log(`[Router] Executing on ${quote.dex}...`);
     
-    // Simulate the 2-3 second blockchain delay
+    // Simulate blockchain confirmation time (2-3 seconds)
     await sleep(2000 + Math.random() * 1000);
 
-    // Simulate slippage (Price might change slightly during execution)
-    const slippage = 1 - (Math.random() * 0.005); // Up to 0.5% slippage
+    // Simulate slippage
+    const slippage = 1 - (Math.random() * 0.005); 
     const finalPrice = quote.price * slippage;
 
     return {
-      txHash: 'sol_' + Math.random().toString(36).substring(7), // Mock Hash
+      txHash: 'sol_' + Math.random().toString(36).substring(7), 
       finalPrice: finalPrice
     };
   }

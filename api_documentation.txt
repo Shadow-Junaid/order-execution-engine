@@ -1,0 +1,19 @@
+API Documentation
+
+1. Execute Order
+POST /orders/execute
+Body:
+{
+  "type": "MARKET",
+  "side": "BUY",
+  "inputToken": "USDC",
+  "outputToken": "SOL",
+  "amount": 100
+}
+
+
+2. WebSocket Stream
+WS /orders/ws?id={orderId}
+Messages:
+{ "status": "routing", "log": "Fetching quotes..." }
+{ "status": "confirmed", "txHash": "sol_...", "price": 150.2 }
