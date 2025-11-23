@@ -1,28 +1,31 @@
+// src/lib/queue.ts
 import { Queue, Worker, Job } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { MockDexRouter } from './dex/MockDexRouter'; 
 import Redis from 'ioredis';
 
-// 1. Redis Connections
-const connection = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: Number(process.env.REDIS_PORT) || 6379,
-  maxRetriesPerRequest: null,
+// --- CLOUD READY REDIS CONNECTION ---
+// If REDIS_URL exists (Railway), use it. Otherwise use localhost.
+const redisConfig = process.env.REDIS_URL 
+  ? process.env.REDIS_URL 
+  : {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: Number(process.env.REDIS_PORT) || 6379,
+      maxRetriesPerRequest: null,
+    };
+
+const connection = new Redis(redisConfig as any, {
+  maxRetriesPerRequest: null 
 });
 
-const redisPublisher = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: Number(process.env.REDIS_PORT) || 6379,
-});
+const redisPublisher = new Redis(redisConfig as any);
+// ------------------------------------
 
 export const orderQueue = new Queue('order-execution', { 
   connection,
   defaultJobOptions: {
-    attempts: 3, // Global retry setting: Try 3 times total
-    backoff: {
-      type: 'exponential',
-      delay: 1000 // Wait 1s, then 2s, then 4s
-    }
+    attempts: 3, 
+    backoff: { type: 'exponential', delay: 1000 }
   }
 });
 

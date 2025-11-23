@@ -6,7 +6,13 @@ import { orderRoutes } from './routes/orders';
 import Redis from 'ioredis';
 
 const app = fastify({ logger: true });
-const redisSubscriber = new Redis(); 
+
+// --- CLOUD READY CONNECTION ---
+const redisConfig = process.env.REDIS_URL || {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: Number(process.env.REDIS_PORT) || 6379
+};
+const redisSubscriber = new Redis(redisConfig as any);
 
 // Global State: Map<OrderId, Set<WebSocket>>
 const clients = new Map<string, Set<any>>();
