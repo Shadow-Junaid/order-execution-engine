@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Order Execution Engine</title>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .btn { background: #238636; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; border-radius: 6px; }
+        .btn:hover { background: #2ea043; }
+        .card { border: 1px solid #30363d; padding: 20px; margin-top: 20px; border-radius: 6px; background: #161b22; }
+        #logs { height: 300px; overflow-y: auto; border-top: 1px solid #30363d; margin-top: 10px; padding-top: 10px; }
+        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #21262d; padding-bottom: 2px; }
+        .status { font-weight: bold; color: #58a6ff; }
+        .timestamp { color: #8b949e; font-size: 0.8em; margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Execution Engine Dashboard</h1>
+        
+        <div class="card">
+            <h3>Submit Market Order</h3>
+            <p>Pair: <strong>USDC / SOL</strong> | Type: <strong>Market</strong></p>
+            <button class="btn" onclick="executeOrder()">Execute Trade</button>
+        </div>
+
+        <div class="card">
+            <h3>Live Execution Logs (WebSocket)</h3>
+            <div id="logs">Wait for order...</div>
+        </div>
+    </div>
+
+    <script>
+        async function executeOrder() {
+            const logsDiv = document.getElementById('logs');
+            logsDiv.innerHTML = '<div class="log-entry">🚀 Submitting Order...</div>';
+
+            // 1. Call API to create order
+            try {
+                const response = await fetch('http://localhost:3000/orders/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: "MARKET",
+                        side: "BUY",
+                        inputToken: "USDC",
+                        outputToken: "SOL",
+                        amount: 100
+                    })
+                });
+
+                const data = await response.json();
+                
+                if(data.success) {
+                    addLog(`Order Created: ID ${data.orderId}`);
+                    connectWebSocket(data.orderId);
+                } else {
+                    addLog(`Error: ${data.error}`);
+                }
+
+            } catch (e) {
+                addLog(`API Connection Failed: ${e.message}`);
+            }
+        }
+
+        function connectWebSocket(orderId) {
+            const ws = new WebSocket(`ws://localhost:3000/orders/ws?id=${orderId}`);
+
+            ws.onopen = () => {
+                addLog("✅ WebSocket Connected. Waiting for updates...");
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                // Format the log entry nicely
+                const statusHtml = `<span class="status">[${data.status.toUpperCase()}]</span>`;
+                addLog(`${statusHtml} ${data.log || JSON.stringify(data)}`);
+
+                if (data.status === 'confirmed') {
+                    addLog("🎉 Trade Complete!");
+                    ws.close();
+                }
+            };
+
+            ws.onclose = () => addLog("WebSocket Connection Closed");
+        }
+
+        function addLog(message) {
+            const logsDiv = document.getElementById('logs');
+            const time = new Date().toLocaleTimeString();
+            logsDiv.innerHTML += `<div class="log-entry"><span class="timestamp">${time}</span>${message}</div>`;
+            logsDiv.scrollTop = logsDiv.scrollHeight; // Auto-scroll
+        }
+    </script>
+</body>
+</html>

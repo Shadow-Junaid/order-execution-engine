@@ -1,0 +1,32 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  type        String   // "MARKET", "LIMIT", "SNIPER"
+  side        String   // "BUY", "SELL"
+  inputToken  String
+  outputToken String
+  amount      Float
+  
+  // Status tracking for WebSocket updates
+  status      String   @default("pending") // pending, routing, building, submitted, confirmed, failed
+  
+  // Execution details
+  txHash      String?  // Nullable, only exists after success
+  price       Float?   // Final execution price
+  
+  // Logs for transparency (DEX choice etc.)
+  logs        Json?    // Stores array of log strings e.g. ["Routing to Raydium..."]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
