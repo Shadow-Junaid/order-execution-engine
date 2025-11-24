@@ -2,9 +2,9 @@
 
 A high-throughput, low-latency order execution engine designed for Solana DEXs. Built with **Node.js**, **BullMQ**, and **Redis** to handle concurrent user orders with real-time WebSocket updates and On-Chain Settlement.
 
-> **🟢 Live Deployment:** [https://solana-order-engine-production.up.railway.app](https://solana-order-engine-production.up.railway.app) (Replace with your actual Railway link)
+> **🟢 Live Deployment:** [https://order-execution-engine-production-28ef.up.railway.app/](https://order-execution-engine-production-28ef.up.railway.app/) (Replace with your actual Railway link)
 >
-> **📺 Video Demo:** [Watch the Walkthrough](YOUR_YOUTUBE_LINK_HERE)
+> **📺 Video Demo:** [Watch the Walkthrough](https://www.youtube.com/watch?v=vYqUPOR1ZBc)
 
 ---
 

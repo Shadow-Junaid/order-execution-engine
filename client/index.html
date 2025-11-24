@@ -21,44 +21,27 @@
         body { background-color: var(--bg); color: var(--text-main); font-family: 'Segoe UI', 'Roboto', monospace; padding: 20px; margin: 0; }
         .container { max-width: 900px; margin: 0 auto; display: grid; gap: 20px; }
         
-        /* Header */
         header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
         h1 { margin: 0; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
         .badge { background: var(--border); font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; color: var(--blue); }
 
-        /* Cards */
         .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
         
-        /* Inputs */
         .controls { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: end; }
         .input-group { display: flex; flex-direction: column; gap: 8px; }
         label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
         input, select { background: #0d1117; border: 1px solid var(--border); color: white; padding: 10px; border-radius: 6px; font-size: 1rem; }
         
-        /* Buttons */
         .btn { background: var(--accent); color: white; border: none; padding: 12px 24px; cursor: pointer; font-size: 1rem; border-radius: 6px; font-weight: 600; transition: all 0.2s; height: 42px; }
         .btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
-        .btn:disabled { background: var(--border); cursor: not-allowed; transform: none; color: var(--text-muted); }
+        .btn:active { transform: translateY(1px); }
 
-        /* The Explorer Button (Hidden by default) */
-        #explorer-container { display: none; margin-top: 20px; text-align: center; animation: fadeIn 0.5s ease-in; }
-        .btn-solana { 
-            background: linear-gradient(90deg, #9945FF 0%, #14F195 100%); 
-            color: #000; 
-            text-decoration: none; 
-            padding: 15px 30px; 
-            border-radius: 8px; 
-            font-weight: bold; 
-            font-size: 1.1rem;
-            display: inline-block;
-            box-shadow: 0 4px 15px rgba(20, 241, 149, 0.3);
-            transition: transform 0.2s;
-        }
-        .btn-solana:hover { transform: scale(1.02); }
-
+        /* Log Link Styling */
+        .log-link { color: var(--blue); text-decoration: underline; cursor: pointer; }
+        
         /* Stepper */
         .stepper { display: flex; justify-content: space-between; margin-top: 20px; position: relative; }
-        .step { display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 1; flex: 1; opacity: 0.4; }
+        .step { display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 1; flex: 1; opacity: 0.4; transition: opacity 0.2s; }
         .step.active { opacity: 1; }
         .step-icon { width: 32px; height: 32px; background: var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid var(--bg); }
         .step.active .step-icon { background: var(--blue); color: white; }
@@ -73,15 +56,13 @@
         .log-entry.success { border-left-color: var(--green); color: var(--green); }
         .log-entry.error { border-left-color: var(--red); color: var(--red); }
         .timestamp { color: var(--border); margin-right: 10px; font-size: 0.8em; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>⚡ HyperFlash <span style="font-weight:normal; color:var(--text-muted)">Engine</span></h1>
-            <span class="badge">● Connected: Localhost</span>
+            <span class="badge">● Connected: Railway Cloud</span>
         </header>
 
         <div class="card">
@@ -92,11 +73,11 @@
                 </div>
                 <div class="input-group">
                     <label>Side</label>
-                    <select id="side"><option value="BUY">BUY</option><option value="SELL">SELL</option></select>
+                    <select id="side"><option value="BUY">BUY</option><option value="SELL" selected>SELL</option></select>
                 </div>
                 <div class="input-group">
                     <label>Amount (USDC)</label>
-                    <input type="number" id="amount" value="100" placeholder="Min 10">
+                    <input type="number" id="amount" value="0.01" placeholder="Min 0.001">
                     <div style="font-size:0.7em; color:var(--text-muted)">💡 Try "666" to test Retry Logic</div>
                 </div>
                 <button id="executeBtn" class="btn" onclick="executeOrder()">🚀 Execute</button>
@@ -108,10 +89,6 @@
                 <div class="step" id="step-submitted"><div class="step-icon">3</div><div>Signing</div></div>
                 <div class="step" id="step-confirmed"><div class="step-icon">4</div><div>Settled</div></div>
             </div>
-
-            <div id="explorer-container">
-                <a href="#" target="_blank" class="btn-solana" id="solana-btn">✨ View Transaction on Solana Explorer</a>
-            </div>
         </div>
 
         <div class="card">
@@ -121,22 +98,21 @@
     </div>
 
     <script>
-        let ws;
+        // FIX: Removed global 'ws' variable so each order is independent
 
         async function executeOrder() {
             const btn = document.getElementById('executeBtn');
             const amount = document.getElementById('amount').value;
             const side = document.getElementById('side').value;
 
-            // Reset UI
-            btn.disabled = true;
-            btn.innerText = "Processing...";
-            resetStepper();
-            document.getElementById('explorer-container').style.display = 'none'; // Hide button initially
-            addLog("init", `🚀 Submitting ${side} order for $${amount}...`);
+            // UI Feedback
+            btn.innerText = "Sending...";
+            setTimeout(() => btn.innerText = "🚀 Execute", 300);
+            
+            resetStepper(); 
+            addLog("init", `🚀 Submitting ${side} order for ${amount} SOL...`);
 
             try {
-                // Call API
                 const response = await fetch('https://order-execution-engine-production-28ef.up.railway.app/orders/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -154,57 +130,52 @@
                 if(data.success) {
                     addLog("info", `Order Queued: ID ${data.orderId}`);
                     updateStepper('pending');
+                    // Call connection logic specifically for this ID
                     connectWebSocket(data.orderId);
                 } else {
                     addLog("error", `Submission Error: ${data.error}`);
-                    finishTrade();
                 }
             } catch (e) {
                 addLog("error", `API Connection Failed: ${e.message}`);
-                finishTrade();
             }
         }
 
         function connectWebSocket(orderId) {
-            ws = new WebSocket(`wss://order-execution-engine-production-28ef.up.railway.app/orders/ws?id=${orderId}`);
+            // FIX: Create a LOCAL WebSocket instance for this specific order
+            const ws = new WebSocket(`wss://order-execution-engine-production-28ef.up.railway.app/orders/ws?id=${orderId}`);
 
-            ws.onopen = () => addLog("info", "📡 WebSocket connected.");
+            ws.onopen = () => { /* Connected */ };
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 const status = data.status;
 
-                addLog(status === 'failed' ? 'error' : 'info', `[${status.toUpperCase()}] ${data.log || ''}`);
+                // Only update stepper for the most recent activity (prevents visual flickering)
                 updateStepper(status);
 
-                // SUCCESS HANDLER
                 if (status === 'confirmed') {
-                    // 1. Show the Big Button if link exists
+                    let logMsg = `[CONFIRMED] Swap Success!`;
                     if (data.link) {
-                        const btn = document.getElementById('solana-btn');
-                        btn.href = data.link;
-                        document.getElementById('explorer-container').style.display = 'block';
+                        // Add clickable link directly to logs
+                        logMsg += ` <a href="${data.link}" target="_blank" style="color:#58a6ff">View on Explorer ↗</a>`;
                     }
-                    addLog("success", "🎉 Trade Successfully Settled!");
-                    finishTrade();
-                }
-
-                // FAILURE HANDLER
-                if (status === 'failed') {
-                    addLog("error", "❌ Trade Failed.");
+                    // Pass 'true' to render as HTML
+                    addLog("success", logMsg, true);
+                    ws.close();
+                } 
+                else if (status === 'failed') {
+                    addLog("error", `[FAILED] ${data.log || 'Trade Failed'}`);
                     document.getElementById('step-confirmed').classList.add('error');
-                    finishTrade();
+                    ws.close();
+                } 
+                else {
+                    // Normal updates
+                    addLog("info", `[${status.toUpperCase()}] ${data.log || ''}`);
                 }
             };
         }
 
-        function finishTrade() {
-            const btn = document.getElementById('executeBtn');
-            btn.disabled = false;
-            btn.innerText = "🚀 Execute New Trade";
-            if(ws) { ws.close(); ws = null; }
-        }
-
+        // Helper UI Functions
         function updateStepper(status) {
             const stages = ['pending', 'routing', 'submitted', 'confirmed'];
             const idx = stages.indexOf(status);
@@ -223,12 +194,20 @@
             document.querySelectorAll('.step').forEach(el => el.className = 'step');
         }
 
-        function addLog(type, message) {
+        function addLog(type, message, isHtml = false) {
             const logsDiv = document.getElementById('logs');
             const entry = document.createElement('div');
             entry.className = `log-entry ${type}`;
-            const cleanMsg = message.replace(/<[^>]*>?/gm, ''); // Strip HTML from logs
-            entry.innerHTML = `<span class="timestamp">${new Date().toLocaleTimeString()}</span>${cleanMsg}`;
+            
+            const time = new Date().toLocaleTimeString();
+            
+            if (isHtml) {
+                entry.innerHTML = `<span class="timestamp">${time}</span>${message}`;
+            } else {
+                const cleanMsg = message.replace(/<[^>]*>?/gm, '');
+                entry.innerHTML = `<span class="timestamp">${time}</span>${cleanMsg}`;
+            }
+            
             logsDiv.appendChild(entry);
             logsDiv.scrollTop = logsDiv.scrollHeight;
         }
