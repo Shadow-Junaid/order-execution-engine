@@ -38,7 +38,7 @@
 
             // 1. Call API to create order
             try {
-                const response = await fetch('https://solana-order-engine-production.up.railway.app/orders/execute', {
+                const response = await fetch('https://order-execution-engine-production.up.railway.app/orders/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -65,7 +65,7 @@
         }
 
         function connectWebSocket(orderId) {
-            const ws = new WebSocket(`wss://solana-order-engine-production.up.railway.app/orders/ws?id=${orderId}`);
+            const ws = new WebSocket(`wss://order-execution-engine-production.up.railway.app/orders/ws?id=${orderId}`);
 
             ws.onopen = () => {
                 addLog("✅ WebSocket Connected. Waiting for updates...");
