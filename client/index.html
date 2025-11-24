@@ -2,96 +2,235 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Order Execution Engine</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HyperFlash Execution Terminal</title>
     <style>
-        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .btn { background: #238636; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; border-radius: 6px; }
-        .btn:hover { background: #2ea043; }
-        .card { border: 1px solid #30363d; padding: 20px; margin-top: 20px; border-radius: 6px; background: #161b22; }
-        #logs { height: 300px; overflow-y: auto; border-top: 1px solid #30363d; margin-top: 10px; padding-top: 10px; }
-        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #21262d; padding-bottom: 2px; }
-        .status { font-weight: bold; color: #58a6ff; }
-        .timestamp { color: #8b949e; font-size: 0.8em; margin-right: 10px; }
+        :root {
+            --bg: #0d1117;
+            --card-bg: #161b22;
+            --border: #30363d;
+            --accent: #238636;
+            --accent-hover: #2ea043;
+            --text-main: #c9d1d9;
+            --text-muted: #8b949e;
+            --blue: #58a6ff;
+            --green: #3fb950;
+            --red: #f85149;
+        }
+
+        body { background-color: var(--bg); color: var(--text-main); font-family: 'Segoe UI', 'Roboto', monospace; padding: 20px; margin: 0; }
+        .container { max-width: 900px; margin: 0 auto; display: grid; gap: 20px; }
+        
+        /* Header */
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        h1 { margin: 0; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
+        .badge { background: var(--border); font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; color: var(--blue); }
+
+        /* Cards */
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+        
+        /* Inputs */
+        .controls { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: end; }
+        .input-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+        input, select { background: #0d1117; border: 1px solid var(--border); color: white; padding: 10px; border-radius: 6px; font-size: 1rem; }
+        
+        /* Buttons */
+        .btn { background: var(--accent); color: white; border: none; padding: 12px 24px; cursor: pointer; font-size: 1rem; border-radius: 6px; font-weight: 600; transition: all 0.2s; height: 42px; }
+        .btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn:disabled { background: var(--border); cursor: not-allowed; transform: none; color: var(--text-muted); }
+
+        /* The Explorer Button (Hidden by default) */
+        #explorer-container { display: none; margin-top: 20px; text-align: center; animation: fadeIn 0.5s ease-in; }
+        .btn-solana { 
+            background: linear-gradient(90deg, #9945FF 0%, #14F195 100%); 
+            color: #000; 
+            text-decoration: none; 
+            padding: 15px 30px; 
+            border-radius: 8px; 
+            font-weight: bold; 
+            font-size: 1.1rem;
+            display: inline-block;
+            box-shadow: 0 4px 15px rgba(20, 241, 149, 0.3);
+            transition: transform 0.2s;
+        }
+        .btn-solana:hover { transform: scale(1.02); }
+
+        /* Stepper */
+        .stepper { display: flex; justify-content: space-between; margin-top: 20px; position: relative; }
+        .step { display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 1; flex: 1; opacity: 0.4; }
+        .step.active { opacity: 1; }
+        .step-icon { width: 32px; height: 32px; background: var(--border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid var(--bg); }
+        .step.active .step-icon { background: var(--blue); color: white; }
+        .step.completed .step-icon { background: var(--green); color: white; }
+        .step.error .step-icon { background: var(--red); color: white; }
+        .stepper::before { content: ''; position: absolute; top: 16px; left: 10%; right: 10%; height: 2px; background: var(--border); z-index: 0; }
+
+        /* Logs */
+        #logs { height: 250px; overflow-y: auto; background: #000; border: 1px solid var(--border); border-radius: 6px; padding: 15px; font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        .log-entry { margin-bottom: 6px; padding-left: 10px; border-left: 2px solid transparent; }
+        .log-entry.info { border-left-color: var(--blue); }
+        .log-entry.success { border-left-color: var(--green); color: var(--green); }
+        .log-entry.error { border-left-color: var(--red); color: var(--red); }
+        .timestamp { color: var(--border); margin-right: 10px; font-size: 0.8em; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Execution Engine Dashboard</h1>
-        
+        <header>
+            <h1>⚡ HyperFlash <span style="font-weight:normal; color:var(--text-muted)">Engine</span></h1>
+            <span class="badge">● Connected: Localhost</span>
+        </header>
+
         <div class="card">
-            <h3>Submit Market Order</h3>
-            <p>Pair: <strong>USDC / SOL</strong> | Type: <strong>Market</strong></p>
-            <button class="btn" onclick="executeOrder()">Execute Trade</button>
+            <div class="controls">
+                <div class="input-group">
+                    <label>Pair</label>
+                    <select id="pair"><option value="SOL/USDC">SOL / USDC</option></select>
+                </div>
+                <div class="input-group">
+                    <label>Side</label>
+                    <select id="side"><option value="BUY">BUY</option><option value="SELL">SELL</option></select>
+                </div>
+                <div class="input-group">
+                    <label>Amount (USDC)</label>
+                    <input type="number" id="amount" value="100" placeholder="Min 10">
+                    <div style="font-size:0.7em; color:var(--text-muted)">💡 Try "666" to test Retry Logic</div>
+                </div>
+                <button id="executeBtn" class="btn" onclick="executeOrder()">🚀 Execute</button>
+            </div>
+
+            <div class="stepper">
+                <div class="step" id="step-pending"><div class="step-icon">1</div><div>Queued</div></div>
+                <div class="step" id="step-routing"><div class="step-icon">2</div><div>Routing</div></div>
+                <div class="step" id="step-submitted"><div class="step-icon">3</div><div>Signing</div></div>
+                <div class="step" id="step-confirmed"><div class="step-icon">4</div><div>Settled</div></div>
+            </div>
+
+            <div id="explorer-container">
+                <a href="#" target="_blank" class="btn-solana" id="solana-btn">✨ View Transaction on Solana Explorer</a>
+            </div>
         </div>
 
         <div class="card">
-            <h3>Live Execution Logs (WebSocket)</h3>
-            <div id="logs">Wait for order...</div>
+            <h3>📜 Live Execution Logs</h3>
+            <div id="logs"><div class="log-entry">System Ready. Waiting for orders...</div></div>
         </div>
     </div>
 
     <script>
-        async function executeOrder() {
-            const logsDiv = document.getElementById('logs');
-            logsDiv.innerHTML = '<div class="log-entry">🚀 Submitting Order...</div>';
+        let ws;
 
-            // 1. Call API to create order
+        async function executeOrder() {
+            const btn = document.getElementById('executeBtn');
+            const amount = document.getElementById('amount').value;
+            const side = document.getElementById('side').value;
+
+            // Reset UI
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+            resetStepper();
+            document.getElementById('explorer-container').style.display = 'none'; // Hide button initially
+            addLog("init", `🚀 Submitting ${side} order for $${amount}...`);
+
             try {
+                // Call API
                 const response = await fetch('https://order-execution-engine-production-28ef.up.railway.app/orders/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         type: "MARKET",
-                        side: "BUY",
+                        side: side,
                         inputToken: "USDC",
                         outputToken: "SOL",
-                        amount: 666
+                        amount: Number(amount)
                     })
                 });
 
                 const data = await response.json();
                 
                 if(data.success) {
-                    addLog(`Order Created: ID ${data.orderId}`);
+                    addLog("info", `Order Queued: ID ${data.orderId}`);
+                    updateStepper('pending');
                     connectWebSocket(data.orderId);
                 } else {
-                    addLog(`Error: ${data.error}`);
+                    addLog("error", `Submission Error: ${data.error}`);
+                    finishTrade();
                 }
-
             } catch (e) {
-                addLog(`API Connection Failed: ${e.message}`);
+                addLog("error", `API Connection Failed: ${e.message}`);
+                finishTrade();
             }
         }
 
         function connectWebSocket(orderId) {
-            const ws = new WebSocket(`wss://order-execution-engine-production-28ef.up.railway.app/orders/ws?id=${orderId}`);
+            ws = new WebSocket(`wss://order-execution-engine-production-28ef.up.railway.app/orders/ws?id=${orderId}`);
 
-            ws.onopen = () => {
-                addLog("✅ WebSocket Connected. Waiting for updates...");
-            };
+            ws.onopen = () => addLog("info", "📡 WebSocket connected.");
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                const statusHtml = `<span class="status">[${data.status.toUpperCase()}]</span>`;
-                addLog(`${statusHtml} ${data.log || JSON.stringify(data)}`);
+                const status = data.status;
 
-                // FIX: Close connection on 'failed' too, not just 'confirmed'
-                if (data.status === 'confirmed' || data.status === 'failed') {
-                    if (data.status === 'confirmed') addLog("🎉 Trade Complete!");
-                    if (data.status === 'failed') addLog("❌ Trade Failed.");
-                    ws.close(); 
+                addLog(status === 'failed' ? 'error' : 'info', `[${status.toUpperCase()}] ${data.log || ''}`);
+                updateStepper(status);
+
+                // SUCCESS HANDLER
+                if (status === 'confirmed') {
+                    // 1. Show the Big Button if link exists
+                    if (data.link) {
+                        const btn = document.getElementById('solana-btn');
+                        btn.href = data.link;
+                        document.getElementById('explorer-container').style.display = 'block';
+                    }
+                    addLog("success", "🎉 Trade Successfully Settled!");
+                    finishTrade();
+                }
+
+                // FAILURE HANDLER
+                if (status === 'failed') {
+                    addLog("error", "❌ Trade Failed.");
+                    document.getElementById('step-confirmed').classList.add('error');
+                    finishTrade();
                 }
             };
-
-            ws.onclose = () => addLog("WebSocket Connection Closed");
         }
 
-        function addLog(message) {
+        function finishTrade() {
+            const btn = document.getElementById('executeBtn');
+            btn.disabled = false;
+            btn.innerText = "🚀 Execute New Trade";
+            if(ws) { ws.close(); ws = null; }
+        }
+
+        function updateStepper(status) {
+            const stages = ['pending', 'routing', 'submitted', 'confirmed'];
+            const idx = stages.indexOf(status);
+            if (idx === -1) return;
+
+            stages.forEach((stage, index) => {
+                const el = document.getElementById(`step-${stage}`);
+                if (index <= idx) {
+                    el.classList.add('active');
+                    if (index < idx) el.classList.add('completed');
+                }
+            });
+        }
+
+        function resetStepper() {
+            document.querySelectorAll('.step').forEach(el => el.className = 'step');
+        }
+
+        function addLog(type, message) {
             const logsDiv = document.getElementById('logs');
-            const time = new Date().toLocaleTimeString();
-            logsDiv.innerHTML += `<div class="log-entry"><span class="timestamp">${time}</span>${message}</div>`;
-            logsDiv.scrollTop = logsDiv.scrollHeight; // Auto-scroll
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const cleanMsg = message.replace(/<[^>]*>?/gm, ''); // Strip HTML from logs
+            entry.innerHTML = `<span class="timestamp">${new Date().toLocaleTimeString()}</span>${cleanMsg}`;
+            logsDiv.appendChild(entry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
         }
     </script>
 </body>

@@ -15,7 +15,12 @@
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@fastify/websocket": "^11.2.0",
+    "@meteora-ag/dlmm": "^1.8.0",
     "@prisma/client": "^5.22.0",
+    "@raydium-io/raydium-sdk-v2": "^0.2.30-alpha",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
     "bullmq": "^5.64.1",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.2",

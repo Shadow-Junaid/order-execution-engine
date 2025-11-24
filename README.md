@@ -1,28 +1,39 @@
-# 🚀 Solana Order Execution Engine
+# 🚀 HyperFlash: Solana Order Execution Engine
 
-A high-throughput, low-latency order execution engine designed for Solana DEXs (Raydium/Meteora). Built with **Node.js**, **BullMQ**, and **Redis** to handle concurrent user orders with real-time WebSocket updates.
+A high-throughput, low-latency order execution engine designed for Solana DEXs. Built with **Node.js**, **BullMQ**, and **Redis** to handle concurrent user orders with real-time WebSocket updates and On-Chain Settlement.
 
-## 🌟 Features
-* **Smart DEX Routing:** Automatically queries quotes from multiple DEXs (Mocked Raydium vs Meteora) and routes to the best price execution.
-* **High Concurrency:** Implements a token-bucket rate-limited queue (100 orders/min) using BullMQ to handle burst traffic without network bans.
-* **Real-Time Updates:** Decoupled WebSocket architecture streams status updates (`Pending` → `Routing` → `Confirmed`) to the client instantly using Redis Pub/Sub.
-* **Resiliency:** Implements exponential back-off retry logic (≤3 attempts) to handle transient network failures gracefully before marking orders as failed.
-* **Persistence:** Stores full order history and execution logs in PostgreSQL.
+> **🟢 Live Deployment:** [https://solana-order-engine-production.up.railway.app](https://solana-order-engine-production.up.railway.app) (Replace with your actual Railway link)
+>
+> **📺 Video Demo:** [Watch the Walkthrough](YOUR_YOUTUBE_LINK_HERE)
+
+---
+
+## 🌟 Key Features
+
+* **Real On-Chain Settlement:** Executes actual transactions on Solana Devnet, signing with a real wallet and handling network confirmation latency.
+* **Smart DEX Routing:** Simulates quoting from multiple DEXs (Raydium vs. Meteora) and automatically routes the order to the venue with the best price execution.
+* **High Concurrency:** Implements a **Token Bucket** rate-limited queue (100 orders/min) using BullMQ to handle burst traffic without triggering RPC bans.
+* **Real-Time Streaming:** Decoupled WebSocket architecture streams status updates (`Pending` → `Routing` → `Submitted` → `Confirmed`) instantly using Redis Pub/Sub.
+* **Resiliency:** Implements exponential back-off retry logic (≤3 attempts) to handle transient network failures before marking orders as failed.
+* **Persistence:** Full order history and execution logs stored in PostgreSQL.
 
 ---
 
 ## 🛠 Tech Stack
+
 * **Runtime:** Node.js + TypeScript
-* **API Server:** Fastify (Chosen for low overhead vs Express)
-* **Queue System:** BullMQ + Redis
+* **API Server:** Fastify (Chosen for lower overhead compared to Express)
+* **Queue System:** BullMQ + Redis (Asynchronous job processing)
 * **Database:** PostgreSQL + Prisma ORM
+* **Blockchain:** @solana/web3.js (Devnet Interaction)
 * **Testing:** Vitest + Supertest
+* **Infrastructure:** Docker & Railway
 
 ---
 
 ## 🧠 Design Decisions & Trade-offs
 
-### 1. Why Market Orders?
+### 1. Choice of Order Type: Market Orders
 I selected **Market Orders** as the primary order type because they demand the highest focus on **system latency** and **queue throughput**. Unlike Limit orders (which require a separate cron-based pricing engine) or Sniper orders (which require mempool scanning), Market orders allowed me to dedicate engineering time to perfecting the **Queue Concurrency**, **Retry Logic**, and **WebSocket Glue**—the critical infrastructure components required for an HFT-style engine.
 
 ### 2. Extensibility (How to add Limit Orders)
@@ -31,8 +42,12 @@ To extend this engine to support **Limit Orders**, I would:
 2.  **Price Listener:** Create a separate worker service that subscribes to a WebSocket price feed (e.g., Pyth or Chainlink).
 3.  **Trigger Logic:** When `livePrice <= targetPrice`, the listener injects a job into the existing `order-execution` queue, reusing the exact same routing and execution logic built here.
 
-### 3. Retry Strategy
-I implemented an **Exponential Back-off** strategy (1s → 2s → 4s) using BullMQ's built-in settings. This prevents the system from spamming the DEX API during temporary outages. If the order fails after 3 attempts, the system catches the final error, marks the database status as `failed`, and persists the error reason for post-mortem analysis.
+### 3. Hybrid Architecture (Mocking vs. Real Execution)
+**Constraint:** The assignment suggests using Raydium/Meteora SDKs. However, liquidity pools on Solana Devnet are notoriously scarce or empty, often leading to `Pool Not Found` errors that cause flaky demonstrations.
+
+**Solution:** I implemented a **Hybrid Router**:
+1.  **Pricing (Mocked):** To ensure the application always receives valid quotes and demonstrates the routing logic without crashing, I simulated the *read* layer.
+2.  **Settlement (Real On-Chain):** To fulfill the core requirement of "Real Execution" and "Network Latency," the engine executes a **Real Native SOL Transfer** on the Solana Devnet. This proves the system's ability to manage wallet keys, sign transactions, pay gas fees, and handle asynchronous blockchain confirmation latency (2-3s).
 
 ---
 
@@ -41,8 +56,10 @@ I implemented an **Exponential Back-off** strategy (1s → 2s → 4s) using Bull
 ### Prerequisites
 * Node.js (v18+)
 * Docker & Docker Compose
+* A Solana Devnet Wallet with SOL (funded via `src/scripts/gen-wallet.ts`)
 
 ### Steps
+
 1.  **Start Infrastructure** (Redis & Postgres):
     ```bash
     docker-compose up -d

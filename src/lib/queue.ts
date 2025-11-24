@@ -1,11 +1,12 @@
-// src/lib/queue.ts
 import { Queue, Worker, Job } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
-import { MockDexRouter } from './dex/MockDexRouter'; 
+import { SolanaRouter } from './dex/SolanaRouter'; 
 import Redis from 'ioredis';
+import dotenv from 'dotenv';
 
-// --- CLOUD READY REDIS CONNECTION ---
-// If REDIS_URL exists (Railway), use it. Otherwise use localhost.
+dotenv.config();
+
+// Redis Config
 const redisConfig = process.env.REDIS_URL 
   ? process.env.REDIS_URL 
   : {
@@ -14,12 +15,8 @@ const redisConfig = process.env.REDIS_URL
       maxRetriesPerRequest: null,
     };
 
-const connection = new Redis(redisConfig as any, {
-  maxRetriesPerRequest: null 
-});
-
+const connection = new Redis(redisConfig as any, { maxRetriesPerRequest: null });
 const redisPublisher = new Redis(redisConfig as any);
-// ------------------------------------
 
 export const orderQueue = new Queue('order-execution', { 
   connection,
@@ -30,69 +27,62 @@ export const orderQueue = new Queue('order-execution', {
 });
 
 const prisma = new PrismaClient();
-const router = new MockDexRouter();
+const router = new SolanaRouter();
 
-// 2. The Worker
 export const orderWorker = new Worker(
   'order-execution',
   async (job: Job) => {
     const { orderId, inputAmount } = job.data;
-    // Log the attempt number (1, 2, or 3)
-    console.log(`[Worker] Processing Order: ${orderId} (Attempt ${job.attemptsMade + 1}/3)`);
+    const attempt = job.attemptsMade + 1;
+    console.log(`[Worker] Processing Order: ${orderId} (Attempt ${attempt})`);
 
     try {
-      // Step A: Update Status (Only on first attempt to avoid spamming UI)
       if (job.attemptsMade === 0) {
         await updateStatus(orderId, 'routing', 'Fetching quotes from DEXs...');
       }
       
-      // Step B: Get Best Quote
+      // 1. Get Quote
       const quote = await router.findBestRoute(inputAmount);
       
-      // Step C: Execution
       if (job.attemptsMade === 0) {
         await updateStatus(orderId, 'routing', `Selected ${quote.dex} at $${quote.price.toFixed(2)}`);
-        await updateStatus(orderId, 'submitted', 'Transaction sent to network...');
+        await updateStatus(orderId, 'submitted', 'Building & Signing Solana Transaction...');
       }
 
-      const result = await router.executeTrade(quote);
+      // 2. Execute Real Trade
+      const result = await router.executeTrade(quote, inputAmount);
 
-      // Step D: Success (Only runs if no error)
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'confirmed',
-          txHash: result.txHash,
-          price: result.finalPrice,
-          logs: { push: `Swap Success! Hash: ${result.txHash}` }
-        }
-      });
+      // 3. Success
+      const explorerLink = `https://explorer.solana.com/tx/${result.txHash}?cluster=devnet`;
       
-      await redisPublisher.publish(`updates:${orderId}`, JSON.stringify({ 
-        status: 'confirmed', 
-        txHash: result.txHash,
-        price: result.finalPrice,
-        log: 'Swap Confirmed'
-      }));
+      // Update DB and Notify
+      await updateStatus(orderId, 'confirmed', `Swap Success! View on Explorer: ${explorerLink}`);
 
       console.log(`[Worker] Order ${orderId} Confirmed.`);
       return result;
 
     } catch (error: any) {
-      console.error(`[Worker] Error order ${orderId}: ${error.message}`);
+      console.error(`[Worker] Error order ${orderId}:`, error.message);
 
-      // CHECK: Is this the LAST attempt?
-      // job.attemptsMade starts at 0. So 0, 1, 2. (Total 3).
-      // If attemptsMade is 2, it means we just failed the 3rd time.
-      if (job.attemptsMade >= 2) {
-        // FINAL FAILURE - Update DB
-        console.log(`[Worker] Final failure for ${orderId}. Marking as FAILED.`);
-        await updateStatus(orderId, 'failed', `Permanent Failure: ${error.message}`);
+      // RETRY LOGIC
+      const maxAttempts = job.opts.attempts || 3;
+      
+      // If we have attempts left (attemptsMade starts at 0. So 0, 1 are retries. 2 is final)
+      if (job.attemptsMade < maxAttempts - 1) {
+        await updateStatus(orderId, 'routing', `Network error. Retrying...`);
+        throw error; // Throwing triggers the retry
       } else {
-        // TEMPORARY FAILURE - Notify user but don't mark failed yet
-        await updateStatus(orderId, 'routing', `Network error (Attempt ${job.attemptsMade + 1}). Retrying...`);
-        // We throw the error so BullMQ knows to try again later
-        throw error;
+        // FINAL FAILURE
+        console.log(`[Worker] ❌ Final failure for ${orderId}. Sending failed status.`);
+        
+        try {
+          // Force status to failed
+          await updateStatus(orderId, 'failed', `Permanent Failure: ${error.message}`);
+        } catch (e) {
+          console.error("[Worker] Failed to update status DB:", e);
+        }
+        // Do not throw here, so the job finishes as "completed" (but failed state)
+        return; 
       }
     }
   },
@@ -103,21 +93,23 @@ export const orderWorker = new Worker(
   }
 );
 
-// Helper
+// Consolidated Helper
 async function updateStatus(orderId: string, status: string, logMessage: string) {
-  // Update DB
-  await prisma.order.update({
-    where: { id: orderId },
-    data: {
-      status: status,
-      logs: { push: logMessage }
-    }
-  });
+  try {
+    // 1. Update DB
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: status, logs: { push: logMessage } }
+    });
 
-  // Update WebSocket
-  await redisPublisher.publish(`updates:${orderId}`, JSON.stringify({ 
-    status, 
-    log: logMessage,
-    timestamp: new Date().toISOString()
-  }));
+    // 2. Update WebSocket
+    await redisPublisher.publish(`updates:${orderId}`, JSON.stringify({ 
+      status, 
+      log: logMessage,
+      // If confirmed, parse the link for the UI
+      link: logMessage.includes('http') ? logMessage.match(/https?:\/\/[^\s]+/)?.[0] : undefined
+    }));
+  } catch (err) {
+    console.error(`[System] Failed to push update for ${orderId}`, err);
+  }
 }
